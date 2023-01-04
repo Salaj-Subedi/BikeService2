@@ -1,0 +1,170 @@
+﻿@page "/inventorymanager"
+<br />
+<h4>INVENTORY MANAGEMENT</h4>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>
+                <div class="d-flex">
+                    Approval Status
+                    <a class='btn text-@(_sortBy == "status" ? "primary" : "secondary")' data-mdb-toggle="tooltip"
+                        @onclick='()=>SortByHandler("status")'>
+                        <span class='oi oi-sort-@(_sortBy == "status" ? _sortDirection : "ascending")' />
+                    </a>
+                </div>
+            </th>
+            <th>
+                <div class="d-flex">
+                   Items
+                    <a class='btn text-@(_sortBy == "ItemName" ? "primary" : "secondary")' data-mdb-toggle="tooltip"
+                       @onclick='()=>SortByHandler("ItemName")'>
+                        <span class='oi oi-sort-@(_sortBy == "ItemName" ? _sortDirection : "ascending")' />
+                    </a>
+                </div>
+            </th>
+            <th>
+                <div class="d-flex">
+                    Last Withdrawl Quantity
+                    <a class='btn text-@(_sortBy == "withdrawl" ? "primary" : "secondary")' data-mdb-toggle="tooltip"
+                       @onclick='()=>SortByHandler("withdrawl")'>
+                        <span class='oi oi-sort-@(_sortBy == "withdrawl" ? _sortDirection : "ascending")' />
+                    </a>
+                </div>
+            </th>
+            <th></th>
+        </tr>
+    </thead>
+        <tbody>
+        @{
+            IEnumerable<Inventory> itemList = _items;
+            if (_sortBy == "status")
+            {
+                itemList = _sortDirection == "ascending" ? itemList.OrderBy(t => t.IsApproved) : itemList.OrderByDescending(t =>
+                t.IsApproved);
+            }
+            else if (_sortBy == "ItemName")
+            {
+                itemList = _sortDirection == "ascending" ? itemList.OrderBy(t => t.ItemName) : itemList.OrderByDescending(t =>
+                t.ItemName);
+            }
+            else if (_sortBy == "withdrawl")
+            {
+                itemList = _sortDirection == "ascending" ? itemList.OrderBy(t => t.TakenQuantity) : itemList.OrderByDescending(t =>
+                t.TakenQuantity);
+            }
+        
+            foreach (var Inventory in itemList)
+            {
+                   <tr> 
+                   @*integrating time slot method to verify time duration for item withdrawl*@
+                        @if(Timeslot.CanWithdraw()){
+                        <td>
+                            <div class="form-check">
+                                <input class="form-check-input me-0" type="checkbox" checked="@Inventory.IsApproved"
+                               @onchange='()=>ToggleDone(Inventory)' />
+                            </div>
+                        </td>
+                        }
+                       
+                        <td>@Inventory.ItemName</td>
+                        <td>
+                        <p class="small mb-0">
+                            @Inventory.TakenQuantity
+                        </p>
+                    </td>
+                    <td>
+                        <button disabled="@Inventory.IsApproved" class="btn btn-outline-secondary" type="button"
+                            @onclick="()=>OpenEditItemDialog(Inventory)">
+                            <span class="oi oi-pencil" /> Withdraw Item
+                        </button>
+                    </td>
+                 </tr>
+            }
+        }
+    </tbody>
+</table>
+<p class="text-danger">Note: Item withdrawl check boxes is only between 9am and 5pm on Weekdays(monday-friday) to ensure secure inventory management </p>
+
+@if (_showEditItemDialog)
+{
+    <ModalDialog Title="@_dialogTitle" OnClose="@OnEditItemDialogClose" OkLabel="@_dialogOkLabel">
+        <div class="form-floating">
+            <input id="itemName" type="text" class="form-control" @bind="_itemModel.ItemName" placeholder="Item Name" />
+            <label for="itemName">Item Name</label>
+        </div>
+        <div class="form-floating">
+            <input id="takenquantity" type="number" class="form-control" min="0" max="@_itemModel.Quantity" @bind="_itemModel.TakenQuantity" placeholder="TakenQuantity" />
+            <label for="takenquantity">Withdrawl Quantity(select between 0 and @_itemModel.Quantity)</label>
+        </div>
+        <div class="form-floating">
+            <input id="takenBy" type="text" class="form-control" @bind="_itemModel.TakenBy" placeholder="Taken By" />
+            <label for="takenBy">Taken By</label>
+        </div>
+
+
+        @if (!string.IsNullOrEmpty(_editItemErrorMessage))
+        {
+            <AlertMessage Type="danger" Message="@_editItemErrorMessage" />
+        }
+    </ModalDialog>
+}
+
+
+@code {
+    [CascadingParameter]
+    private GlobalState _globalState { get; set; }
+    private bool _showEditItemDialog { get; set; }
+
+    private List<Inventory> _items { get; set; }
+    private TimeSlot Timeslot = new();
+    private string _dialogTitle { get; set; }
+    private string _dialogOkLabel { get; set; }
+    private string _editItemErrorMessage { get; set; }
+    
+    private Inventory _itemModel { get; set; }
+    //private string _tabFilter = "All";
+    private string _sortBy = "";
+    private string _sortDirection = "ascending";
+
+    protected override void OnInitialized()
+    {
+        _items = InventoryService.GetAll();
+    }
+
+    private void SortByHandler(string sortByName)
+    {
+        if (_sortBy == sortByName)
+        {
+            _sortDirection = _sortDirection == "ascending" ? "descending" : "ascending";
+        }
+        else
+        {
+            _sortBy = sortByName;
+            _sortDirection = "ascending";
+        }
+    }
+
+
+    private void OpenEditItemDialog(Inventory editItem)
+    {
+        _dialogTitle = "Edit Item";
+        _dialogOkLabel = "Save";
+        _itemModel = editItem;
+        _showEditItemDialog = true;
+    }
+    private void OnEditItemDialogClose(bool isCancel)
+    {
+        _showEditItemDialog = false;
+    }
+  // defining action when admin checks the done button 
+    private void ToggleDone(Inventory item)
+    {
+        item.IsApproved = !item.IsApproved;
+
+        if(item.TakenQuantity !=0){
+            _items = InventoryService.Delete(_globalState.CurrentUser.Username, item.ItemName, item.TakenQuantity, item.TakenBy, item.IsApproved);
+        }
+        
+    }
+}
